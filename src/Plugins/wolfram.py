@@ -122,3 +122,12 @@ class Plugin:
 
         for message in messages:
             self.controller.privmsg(msg.channel, message)
+
+    @staticmethod
+    def configure():
+        options = {}
+        appid = raw_input('Enter WolframAlpha AppID: ')
+        while not appid:
+            appid = raw_input('Enter WolframAlpha AppID: ')
+        options['appid'] = appid
+        return options

@@ -9,8 +9,6 @@ import os
 import json
 import kronos
 import unicodedata
-import tempfile
-import shutil
 
 from Interface import *
 from importlib import import_module
@@ -362,7 +360,12 @@ class PluginHandler:
                 m = reload(import_module('Plugins.'+mod)).Plugin
                 if not self.controller.config['enabled_plugins'][mod]:
                     continue
+                if 'loadable' in dir(m):
+                    if not getattr(m, 'loadable'):
+                        continue
                 m = m(self.controller)
+            except AttributeError:
+                continue
             except Exception as e:
                 self.controller.report_error(e)
                 continue
@@ -432,7 +435,6 @@ if __name__ == '__main__':
             'Creating new config file %s' % config_filename
 
         if not skip:
-            tmpconfig = tempfile.TemporaryFile()
             enabled = {}
             for f in os.listdir('./Plugins'):
                 if f.endswith('.py'):
@@ -448,20 +450,20 @@ if __name__ == '__main__':
                     continue
                 try:
                     m = import_module('Plugins.'+mod).Plugin
-                    if 'configure' in dir(m):
+                    if 'configure' in dir(m): 
                         options = m.configure()
                         plugin_options[mod] = options
                     enabled[mod] = True
                 except Exception as e:
-                    self.controller.report_error(e)
+                    error = traceback.format_exc()
+                    print error
                     enabled[mod] = False
                     plugin_options.pop(mod, None)
                     continue
 
             plugin_options['enabled_plugins'] = enabled
 
-            tmpconfig.write(json.dumps(plugin_options))
-            shutil.copyfileobj(tmpconfig, open(config_filename, 'w'))
+            open(config_filename, 'w').write(json.dumps(plugin_options, indent=4))
 
         while 'configure' in sys.argv:
             sys.argv.remove('configure')
