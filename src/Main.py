@@ -9,6 +9,8 @@ import os
 import json
 import kronos
 import unicodedata
+import tempfile
+import shutil
 
 from Interface import *
 from importlib import import_module
@@ -358,14 +360,9 @@ class PluginHandler:
         for mod in l:
             try:
                 m = reload(import_module('Plugins.'+mod)).Plugin
-
-                if 'active' in dir(m):
-                    if not getattr(m, 'active'):
-                        continue
-
+                if not self.controller.config['enabled_plugins'][mod]:
+                    continue
                 m = m(self.controller)
-            except AttributeError:
-                continue
             except Exception as e:
                 self.controller.report_error(e)
                 continue
@@ -416,6 +413,60 @@ if __name__ == '__main__':
         args = sys.argv[1:]
     else:
         args = []
+    
+    if '-s' in args:
+        config_filename = args[args.index('-s')+1]
+    else:
+        config_filename = os.path.join(os.path.expanduser('~'), '.ninjabot_config')
+
+    if 'configure' in args or not os.path.exists(config_filename):
+        # check if config file exists
+        skip = False
+        if os.path.exists(config_filename):
+            overwrite = raw_input('Config file %s already exists. Do you want to overwrite? [y/N] ' % config_filename).lower()
+            while overwrite not in ['y','n','']:
+                overwrite = raw_input('Overwrite config? [y/N] ')
+            if overwrite != 'y':
+                skip = True
+        else:
+            'Creating new config file %s' % config_filename
+
+        if not skip:
+            tmpconfig = tempfile.TemporaryFile()
+            enabled = {}
+            for f in os.listdir('./Plugins'):
+                if f.endswith('.py'):
+                    enabled[f[:-3]] = False
+
+            plugin_options = {}
+
+            for mod in enabled:
+                enable = raw_input('Enable %s? [Y/n] ' % mod).lower()
+                while enable not in ['y','n','']:
+                    enable = raw_input('Enable %s? [Y/n] ' % mod).lower()
+                if enable == 'n':
+                    continue
+                try:
+                    m = import_module('Plugins.'+mod).Plugin
+                    if 'configure' in dir(m):
+                        options = m.configure()
+                        plugin_options[mod] = options
+                    enabled[mod] = True
+                except Exception as e:
+                    self.controller.report_error(e)
+                    enabled[mod] = False
+                    plugin_options.pop(mod, None)
+                    continue
+
+            plugin_options['enabled_plugins'] = enabled
+
+            tmpconfig.write(json.dumps(plugin_options))
+            shutil.copyfileobj(tmpconfig, open(config_filename, 'w'))
+
+        while 'configure' in sys.argv:
+            sys.argv.remove('configure')
+
+
 
     if 'wrapped' not in args:
         # launch wrapper
@@ -441,11 +492,6 @@ if __name__ == '__main__':
 
     graphical = not ('nogui' in args)
     print 'ninjabot started in %s mode' % ('graphical' if graphical else 'text')
-
-    if '-s' in args:
-        config_filename = args[args.index('-s')+1]
-    else:
-        config_filename = os.path.join(os.path.expanduser('~'), '.ninjabot_config')
 
     remove_comments = re.compile(r'/\*.*?\*/', re.DOTALL)
     config = json.loads(re.sub(remove_comments,'',open(config_filename, 'rU').read()))
